@@ -4,6 +4,7 @@
 #include<time.h>
 
 #include<omp.h>
+#include <mpi.h>
 
 #define ARRAY_SIZE 1000000000
 
@@ -33,15 +34,40 @@ void filter_and_sum(int* data, int size, int min_val, int max_val, int sum_thres
 }
 
 int main(int argc, char** argv) {
-    int process_Rank, size_cluster;
+    int process_rank, size_cluster;
+    int total_count = 0, local_count = 0;
     int num_threads = 1, min = 10000, max = 99999, sum_thresh = 30;
+    long long int total_sum = 0, partial_sum = 0;
 
     int padding = (ARRAY_SIZE % size_cluster) ? size_cluster - (ARRAY_SIZE % size_cluster) : 0;
     int total_size = ARRAY_SIZE + padding;
     int* data = NULL;
+    int scattered_size = total_size / size_cluster;
 
-    data = (int*)malloc(total_size * sizeof(int));
-    generate_data(data, ARRAY_SIZE, min, max);
+    MPI_Init(&argc, &argv);
+    MPI_Comm_rank(MPI_COMM_WORLD, &process_rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size_cluster);
+
+    parse_args(argc, argv, &num_threads, &min, &max, &sum_thresh);
+    omp_set_num_threads(num_threads);
+
+    int* data = NULL;
+    if (process_rank == 0) {
+        data = (int*)malloc(total_size * sizeof(int));
+        generate_data(data, ARRAY_SIZE, min, max);
+        for (int i = ARRAY_SIZE; i < total_size; ++i) data[i] = 0;
+    }
+
+    int* scattered = (int*)malloc(scattered_size * sizeof(int));
+    MPI_Scatter(data, scattered_size, MPI_INT, scattered, scattered_size, MPI_INT, 0, MPI_COMM_WORLD);
+
+    filter_and_sum(scattered, scattered_size, min, max, sum_thresh, &partial_sum, &local_count);
+
+    MPI_Reduce(&partial_sum, &total_sum, 1, MPI_LONG_LONG_INT, MPI_SUM, 0, MPI_COMM_WORLD);
+    MPI_Reduce(&local_count, &total_count, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
+
+    free(scattered);
+    MPI_Finalize();
 
     return 0;
 }
