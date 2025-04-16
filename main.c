@@ -38,6 +38,7 @@ int main(int argc, char** argv) {
     int total_count = 0, local_count = 0;
     int num_threads = 1, min = 10000, max = 99999, sum_thresh = 30;
     long long int total_sum = 0, partial_sum = 0;
+    double time_start = 0, time_stop = 0;
 
     int padding = (ARRAY_SIZE % size_cluster) ? size_cluster - (ARRAY_SIZE % size_cluster) : 0;
     int total_size = ARRAY_SIZE + padding;
@@ -65,6 +66,17 @@ int main(int argc, char** argv) {
 
     MPI_Reduce(&partial_sum, &total_sum, 1, MPI_LONG_LONG_INT, MPI_SUM, 0, MPI_COMM_WORLD);
     MPI_Reduce(&local_count, &total_count, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
+
+    if (process_rank == 0) {
+        time_stop = MPI_Wtime();
+        double mean = (total_count > 0) ? ((double)total_sum / total_count) : 0.0;
+        printf("Processes: %d | Threads per process: %d\n", size_cluster, num_threads);
+        printf("Filtered count: %d\n", total_count);
+        printf("Filtered sum: %lld\n", total_sum);
+        printf("Arithmetic mean: %.6f\n", mean);
+        printf("Time elapsed: %.4f seconds\n", time_stop - time_start);
+        free(data);
+    }
 
     free(scattered);
     MPI_Finalize();
